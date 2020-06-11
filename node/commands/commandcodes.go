@@ -24,8 +24,8 @@ const (
 	//CmdGetRoutingResp - response to resquest routing table
 	CmdGetRoutingResp = 0x06
 
-	//CmdGetIP - asks for the address of a given ID
-	CmdGetIP = 0x07
+	//CmdGetRoute - asks peer for the route to a certain ID
+	CmdGetRoute = 0x07
 
 	//CmdRelayMessage - asks to relay the message to the Given ID (can nest messages to relay to en end point)
 	CmdRelayMessage = 0x08

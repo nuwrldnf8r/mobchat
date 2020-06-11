@@ -25,15 +25,16 @@ var (
 
 //Connection -
 type Connection struct {
-	c          net.Conn
-	addr       net.Addr
-	server     bool
-	messageIds []byte
-	handshake  bool
-	isPeer     bool
-	id         []byte
-	pubKey     encryption.Key
-	timer      *time.Timer
+	c              net.Conn
+	addr           net.Addr
+	server         bool
+	messageIds     []byte
+	handshake      bool
+	sentGetRouting bool //prevents malicious getrouting messages
+	isPeer         bool
+	id             []byte
+	pubKey         encryption.Key
+	timer          *time.Timer
 }
 
 //Connections -
@@ -69,8 +70,22 @@ func (con *Connection) startHandshakeTimeout() {
 	}
 }
 
+func (con *Connection) startTimeout() {
+	dur, _ := time.ParseDuration(strconv.FormatInt(handshakeTimeout, 30) + "s")
+	con.timer = time.NewTimer(dur)
+
+	<-con.timer.C
+	if !con.handshake {
+		con.c.Close()
+	}
+}
+
 func (con *Connection) stopHandshakeTimeout() {
 	con.handshake = true
+	con.timer.Stop()
+}
+
+func (con *Connection) stopTimeout() {
 	con.timer.Stop()
 }
 

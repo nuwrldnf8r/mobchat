@@ -52,6 +52,11 @@ func (routing *Routing) Check() []byte {
 	return h.Sum(nil)
 }
 
+//Compare - compares a returned check with this routing
+func (routing *Routing) Compare(check []byte) bool {
+	return bytes.Compare(routing.Check(), check) == 0
+}
+
 //RemoveNode -
 func (routing *Routing) RemoveNode(node *Node) {
 	mutex.Lock()

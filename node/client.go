@@ -40,7 +40,7 @@ func doHandshake(conn *Connection) {
 	timer := time.NewTimer(100 * time.Millisecond)
 	<-timer.C
 	hs := commands.NewHandshake(_me.ID(), pubKey, _me.Address)
-	msg := NewMessage(hs.Serialize(), nil, false)
+	msg := NewMessage(hs.Serialize(), false)
 	fmt.Println("sending handshake")
 	conn.sendMessage(msg)
 }

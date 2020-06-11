@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"mobchat/config"
 	"mobchat/node"
-	"mobchat/node/commands"
 	"os"
 	"strings"
 )
@@ -35,8 +34,7 @@ func makeClientConnections() {
 }
 
 func main() {
-	address := commands.Address{}
-	fmt.Println("address:", address.Serialize())
+
 	err := node.Initialize()
 	if err != nil {
 		fmt.Println(err)

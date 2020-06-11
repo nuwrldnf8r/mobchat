@@ -56,7 +56,7 @@ func (node *Node) RemoveConnection(n *Node) {
 }
 
 //NewNode -
-func NewNode(ID []byte, pubKey encryption.Key, address commands.Address, connections []*Node) Node {
+func NewNode(pubKey encryption.Key, address commands.Address, connections []*Node) Node {
 	node := Node{
 		Address: address,
 		PubKey: encryption.Key{

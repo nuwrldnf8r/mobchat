@@ -15,19 +15,17 @@ import (
 
 //Message -
 type Message struct {
-	Body        []byte
-	Timestamp   uint64
-	Destination []byte //if zero length - destination unknown
-	Encrypted   bool
+	Body      []byte
+	Timestamp uint64
+	Encrypted bool
 }
 
 //NewMessage -
-func NewMessage(body []byte, destination []byte, encrypted bool) Message {
+func NewMessage(body []byte, encrypted bool) Message {
 	return Message{
-		Body:        body,
-		Destination: destination,
-		Encrypted:   encrypted,
-		Timestamp:   uint64(time.Now().UnixNano()),
+		Body:      body,
+		Encrypted: encrypted,
+		Timestamp: uint64(time.Now().UnixNano()),
 	}
 }
 
@@ -89,6 +87,12 @@ func HandleMessage(msg Message, con *Connection) {
 	case commands.CmdCheckRoutingResp:
 		handleRoutingCheckResp(body[2:], con)
 		break
+	case commands.CmdGetRouting:
+		handleGetRouting(con)
+		break
+	case commands.CmdGetRoutingResp:
+		handleGetRoutingResp(body[2:], con)
+		break
 	default:
 		fmt.Println("Junk message")
 		//is junk message - need to decide how to respond
@@ -107,6 +111,8 @@ func handleHandshake(hs commands.Handshake, con *Connection) {
 	if _connections.countIncoming() >= maxIncoming {
 		address = commands.Address{}
 		isConnection = false
+	} else {
+		con.isPeer = true
 	}
 	pubKey := encryption.Key{Public: _me.Key.Public}
 	s, _ := pubKey.Serialize()
@@ -114,7 +120,7 @@ func handleHandshake(hs commands.Handshake, con *Connection) {
 	fmt.Println("id", _me.ID())
 	hsr := commands.NewHandshakeResponse(_me.ID(), pubKey, address)
 
-	msg := NewMessage(hsr.Serialize(), nil, false)
+	msg := NewMessage(hsr.Serialize(), false)
 	mutex.Lock()
 	con.stopHandshakeTimeout()
 	err := con.sendMessage(msg)
@@ -123,16 +129,21 @@ func handleHandshake(hs commands.Handshake, con *Connection) {
 	}
 	mutex.Unlock()
 	if isConnection {
-		n := routing.NewNode(con.id, con.pubKey, hs.Address, nil)
+		n := routing.NewNode(hs.PubKey, hs.Address, nil)
 		routing.Table.AddNode(&n)
 	}
 }
 
 func handleHandshakeResp(hsr commands.HandshakeResponse, con *Connection) {
 	con.stopHandshakeTimeout()
+	if hsr.IsConnection() {
+		n := routing.NewNode(hsr.PubKey, hsr.Address, nil)
+		routing.Table.AddNode(&n)
+		con.isPeer = true
+	}
 	//do routing check
 	routingCheck := []byte{commands.Version, commands.CmdCheckRouting}
-	msg := NewMessage(routingCheck, nil, false)
+	msg := NewMessage(routingCheck, false)
 	err := con.sendMessage(msg)
 	if err != nil {
 		fmt.Println(err)
@@ -143,13 +154,66 @@ func handleRoutingCheck(con *Connection) {
 	check := routing.Table.Check()
 	cmd := []byte{commands.Version, commands.CmdCheckRoutingResp}
 	body := append(cmd, check...)
-	msg := NewMessage(body, nil, false)
+	msg := NewMessage(body, false)
 	err := con.sendMessage(msg)
 	if err != nil {
 		fmt.Println(err)
 	}
+	if !con.isPeer {
+		con.startTimeout()
+	}
 }
 
 func handleRoutingCheckResp(data []byte, con *Connection) {
+
 	//compare with own routing
+	if routing.Table.Compare(data) {
+		if !con.isPeer {
+			con.close()
+		}
+		return
+	}
+	cmd := []byte{commands.Version, commands.CmdGetRouting}
+	msg := NewMessage(cmd, false)
+	err := con.sendMessage(msg)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	con.sentGetRouting = true
+}
+
+func handleGetRouting(con *Connection) {
+	con.stopTimeout()
+	var buff bytes.Buffer
+	buff.Write([]byte{commands.Version, commands.CmdGetRoutingResp})
+	buff.Write(routing.Table.Serialize())
+	msg := NewMessage(buff.Bytes(), false)
+	err := con.sendMessage(msg)
+	if err != nil {
+		fmt.Println(err)
+	}
+	if !con.isPeer {
+		con.startTimeout()
+	}
+}
+
+func handleGetRoutingResp(data []byte, con *Connection) {
+	if !con.sentGetRouting {
+		con.close()
+		return
+	}
+	route, err := routing.DeserializeRouting(data)
+	if err != nil {
+		fmt.Println(err)
+	}
+	for _, n := range route.Nodes {
+		routing.Table.AddNode(n)
+	}
+
+	go findPeers()
+
+	if !con.isPeer {
+		con.close()
+	}
 }

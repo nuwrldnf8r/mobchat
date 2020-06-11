@@ -74,6 +74,11 @@ func (hs *HandshakeResponse) Serialize() []byte {
 	return buff.Bytes()
 }
 
+//IsConnection -
+func (hs *HandshakeResponse) IsConnection() bool {
+	return hs.Address.IP != "0.0.0.0"
+}
+
 //NewHandshakeResponse -
 func NewHandshakeResponse(ID []byte, pubKey encryption.Key, address Address) HandshakeResponse {
 	return HandshakeResponse{
