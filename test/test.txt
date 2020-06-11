@@ -1,0 +1,45 @@
+/*
+	key1, err := encryption.Generate(1024)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	key2, err := encryption.Generate(1024)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	key3, err := encryption.Generate(1024)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	keys := make([]encryption.Key, 2)
+	keys[0] = key2
+	keys[1] = key3
+	msg := encryption.Message{
+		Sender:     key1,
+		Recipients: keys,
+		Body:       []byte("hello world"),
+	}
+
+	
+
+	packet, err := msg.Prepare()
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	fmt.Println("min Packet", len(packet))
+
+	msg2, err := encryption.Decode(packet, key2)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	fmt.Println(string(msg2.Body))
+	*/
