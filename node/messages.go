@@ -4,12 +4,12 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/binary"
-	"encoding/hex"
 	"fmt"
 	"mobchat/config"
 	"mobchat/encryption"
 	"mobchat/node/commands"
 	"mobchat/node/routing"
+	"mobchat/util"
 	"strconv"
 	"time"
 )
@@ -285,9 +285,7 @@ func sendConnectionMessage(node *routing.Node) {
 
 func handlePeerConnected(msg Message) {
 	data := msg.Body[2:]
-	dst := make([]byte, hex.EncodedLen(32))
-	hex.Encode(dst, data[0:32])
-	id := string(dst)
+	id := util.ToHexString(data[0:32])
 	mutex.Lock()
 	node, exists := routing.Table.Nodes[id]
 	mutex.Unlock()
@@ -317,9 +315,7 @@ func handlePeerConnected(msg Message) {
 func handlePeerDisconnected(msg Message) {
 
 	data := msg.Body[2:]
-	dst := make([]byte, hex.EncodedLen(32))
-	hex.Encode(dst, data[0:32])
-	id1 := string(dst)
+	id1 := util.ToHexString(data[0:32])
 	mutex.Lock()
 	node1, exists := routing.Table.Nodes[id1]
 	mutex.Unlock()
@@ -327,8 +323,7 @@ func handlePeerDisconnected(msg Message) {
 		fmt.Println("Node1 does not exist")
 		return
 	}
-	hex.Encode(dst, data[32:64])
-	id2 := string(dst)
+	id2 := util.ToHexString(data[32:64])
 	mutex.Lock()
 	node2, exists := routing.Table.Nodes[id2]
 	mutex.Unlock()
