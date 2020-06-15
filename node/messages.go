@@ -121,6 +121,8 @@ func HandleMessage(msg Message, con *Connection) {
 	case commands.CmdPeerConnected:
 		handlePeerConnected(msg)
 		break
+	case commands.CmdPeerDisconnected:
+		handlePeerDisconnected(msg)
 	default:
 		fmt.Println("Junk message")
 		//is junk message - need to decide how to respond
@@ -310,4 +312,48 @@ func handlePeerConnected(msg Message) {
 	routing.Table.AddNode(&n)
 	node.AddConnection(&n)
 
+}
+
+func handlePeerDisconnected(msg Message) {
+
+	data := msg.Body[2:]
+	dst := make([]byte, hex.EncodedLen(32))
+	hex.Encode(dst, data[0:32])
+	id1 := string(dst)
+	mutex.Lock()
+	node1, exists := routing.Table.Nodes[id1]
+	mutex.Unlock()
+	if !exists {
+		fmt.Println("Node1 does not exist")
+		return
+	}
+	hex.Encode(dst, data[32:64])
+	id2 := string(dst)
+	mutex.Lock()
+	node2, exists := routing.Table.Nodes[id2]
+	mutex.Unlock()
+	if !exists {
+		fmt.Println("Node2 does not exist")
+		return
+	}
+	sig := data[64:]
+
+	if !encryption.ValidateSig(node1.PubKey, sig, msg.Body[0:66]) {
+		fmt.Println("Invalid sig for peer connection")
+		return
+	}
+	go _connections.SendMessage(msg)
+
+	node1.RemoveConnection(node2)
+
+}
+
+func sendPeerDisconnected(id []byte) {
+	body := []byte{commands.Version, commands.CmdPeerDisconnected}
+	body = append(body, _me.ID()...)
+	body = append(body, id...)
+	sig, _ := encryption.Sign(_me.Key, body)
+	body = append(body, sig...)
+	msg := NewMessage(body, false)
+	_connections.SendMessage(msg)
 }

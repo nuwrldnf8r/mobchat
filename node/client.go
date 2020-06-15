@@ -26,6 +26,7 @@ func listen(conn *Connection) {
 				conn.c.Close()
 				go _connections.RemoveAndRetry(*conn)
 			}
+			sendPeerDisconnected(conn.id)
 			break
 		}
 		HandleMessage(DeserializeMessage(m), conn)

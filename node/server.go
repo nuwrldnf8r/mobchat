@@ -56,6 +56,7 @@ func handleConnection(conn net.Conn) {
 				conn.Close()
 				_connections.Remove(c)
 			}
+			sendPeerDisconnected(c.id)
 			break
 		}
 		go HandleMessage(DeserializeMessage(m), &c)
