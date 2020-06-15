@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/binary"
+	"fmt"
+	"mobchat/node/commands"
 	"sort"
 	"strings"
 	"sync"
@@ -29,7 +31,10 @@ func newRouting() Routing {
 //AddNode -
 func (routing *Routing) AddNode(node *Node) {
 	mutex.Lock()
-	routing.Nodes[node.IDString()] = node
+	_, exists := routing.Nodes[node.IDString()]
+	if !exists {
+		routing.Nodes[node.IDString()] = node
+	}
 	mutex.Unlock()
 }
 
@@ -57,6 +62,17 @@ func (routing *Routing) Compare(check []byte) bool {
 	return bytes.Compare(routing.Check(), check) == 0
 }
 
+//FindNodeByAddress -
+func (routing *Routing) FindNodeByAddress(addr commands.Address) *Node {
+	_addr := addr.String()
+	for _, node := range routing.Nodes {
+		if node.Address.String() == _addr {
+			return node
+		}
+	}
+	return nil
+}
+
 //RemoveNode -
 func (routing *Routing) RemoveNode(node *Node) {
 	mutex.Lock()
@@ -71,19 +87,25 @@ func (routing *Routing) RemoveNode(node *Node) {
 func (routing *Routing) Serialize() []byte {
 	var buff bytes.Buffer
 	index := make(map[string][]byte)
+	//write routing length
 	routingLen := uint32(len(routing.Nodes))
 	ln := make([]byte, 4)
 	binary.BigEndian.PutUint32(ln, routingLen)
 	buff.Write(ln)
+
+	//write nodes
 	cnt := 0
 	for _, node := range routing.Nodes {
 		buff.Write(node.Serialize())
-		idx := uint32(cnt*144 + 4)
+		//add index of this node to the index map
+		//to map out connections later
+		idx := uint32(cnt)
 		bidx := make([]byte, 4)
 		binary.BigEndian.PutUint32(bidx, idx)
 		index[node.IDString()] = bidx
 		cnt++
 	}
+	//write connections for each node by index
 	for _, node := range routing.Nodes {
 		lenConnections := len(node.Connections)
 		buff.WriteByte(byte(lenConnections))
@@ -101,7 +123,9 @@ func (routing *Routing) FindRoute(ID []byte) []Node {
 
 //DeserializeRouting -
 func DeserializeRouting(data []byte) (Routing, error) {
+	//get the routing length (number of nodes)
 	routingLen := binary.BigEndian.Uint32(data[0:4])
+	fmt.Println("routingLen", routingLen)
 	arNodes := make([]Node, routingLen)
 	for i := range arNodes {
 		idx := 4 + i*144
@@ -112,16 +136,20 @@ func DeserializeRouting(data []byte) (Routing, error) {
 		}
 		arNodes[i] = node
 	}
+	//add indexing
 	cnt := uint32(0)
 	idx := routingLen*144 + 4
 	for cnt < routingLen {
 		ln := uint8(data[idx])
 		i := uint8(0)
+		arNodes[cnt].Connections = make(map[string]*Node)
 		idx++
 		for i < ln {
-			nodeIdx := binary.BigEndian.Uint32(data[idx:4])
+			nodeIdx := binary.BigEndian.Uint32(data[idx : idx+4])
+			fmt.Println("nodeIdx", nodeIdx)
 			n := arNodes[nodeIdx]
-			arNodes[cnt].Connections[n.IDString()] = &n
+			fmt.Println("cnt", cnt)
+			arNodes[cnt].AddConnection(&n)
 			idx += 4
 			i++
 		}
@@ -131,8 +159,9 @@ func DeserializeRouting(data []byte) (Routing, error) {
 	routing := Routing{
 		Nodes: make(map[string]*Node),
 	}
-	for _, node := range arNodes {
-		routing.Nodes[node.IDString()] = &node
+	for i := range arNodes {
+		n := arNodes[i]
+		routing.Nodes[n.IDString()] = &n
 	}
 	return routing, nil
 }

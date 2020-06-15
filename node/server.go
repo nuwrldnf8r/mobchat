@@ -46,7 +46,7 @@ func handleConnection(conn net.Conn) {
 	//c.sendMessage([]byte("hello"))
 	for {
 		decoder := gob.NewDecoder(conn)
-		var m Message
+		var m []byte
 		err := decoder.Decode(&m)
 		if err != nil {
 			if err == io.EOF {
@@ -58,7 +58,7 @@ func handleConnection(conn net.Conn) {
 			}
 			break
 		}
-		go HandleMessage(m, &c)
+		go HandleMessage(DeserializeMessage(m), &c)
 
 	}
 

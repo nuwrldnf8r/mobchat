@@ -14,6 +14,7 @@ func applyDefaults() {
 	conf["checkin"] = "127.0.0.1:9999" //,127.0.0.1:8888
 	conf["public"] = "true"
 	conf["maxincoming"] = "5"
+	conf["maxoutgoing"] = "5"
 }
 
 func initialize() {

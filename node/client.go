@@ -15,7 +15,7 @@ import (
 func listen(conn *Connection) {
 	for {
 		decoder := gob.NewDecoder(conn.c)
-		var m Message
+		var m []byte
 		err := decoder.Decode(&m)
 		if err != nil {
 			if err == io.EOF {
@@ -28,7 +28,7 @@ func listen(conn *Connection) {
 			}
 			break
 		}
-		HandleMessage(m, conn)
+		HandleMessage(DeserializeMessage(m), conn)
 
 	}
 }

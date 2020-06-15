@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"mobchat/encryption"
+	"mobchat/node/routing"
 	"net"
 	"strconv"
 	"strings"
@@ -54,9 +55,21 @@ func (cons *Connections) countIncoming() int64 {
 	return cnt
 }
 
+func (cons *Connections) countOutgoing() int64 {
+	cnt := int64(0)
+	mutex.Lock()
+	for _, c := range _connections._lst {
+		if c.server {
+			cnt++
+		}
+	}
+	mutex.Unlock()
+	return cnt
+}
+
 func (con *Connection) sendMessage(msg Message) error {
 	encoder := gob.NewEncoder(con.c)
-	err := encoder.Encode(msg)
+	err := encoder.Encode(msg.Serialize())
 	return err
 }
 
@@ -120,6 +133,26 @@ func (cons *Connections) Remove(con Connection) {
 	delete(_connections._lst, con.addr.String())
 	fmt.Println("removed", con.addr.String())
 	mutex.Unlock()
+}
+
+//Contains - checks to see if a node is a peer
+func (cons *Connections) Contains(node *routing.Node, lock bool) bool {
+	if lock {
+		mutex.Lock()
+	}
+	for _, con := range cons._lst {
+		if con.addr.String() == node.Address.String() {
+			if lock {
+				mutex.Unlock()
+			}
+			return true
+		}
+	}
+	if lock {
+		mutex.Unlock()
+	}
+
+	return false
 }
 
 //RemoveAndRetry -

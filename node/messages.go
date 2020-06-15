@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"mobchat/config"
 	"mobchat/encryption"
@@ -18,6 +19,32 @@ type Message struct {
 	Body      []byte
 	Timestamp uint64
 	Encrypted bool
+}
+
+//Serialize -
+func (msg *Message) Serialize() []byte {
+	var buff bytes.Buffer
+	if msg.Encrypted {
+		buff.WriteByte(0x01)
+	} else {
+		buff.WriteByte(0x00)
+	}
+	ts := make([]byte, 8)
+	binary.BigEndian.PutUint64(ts, msg.Timestamp)
+	buff.Write(ts)
+	buff.Write(msg.Body)
+	return buff.Bytes()
+}
+
+//DeserializeMessage -
+func DeserializeMessage(data []byte) Message {
+	m := Message{}
+	if data[0] == 0x01 {
+		m.Encrypted = true
+	}
+	m.Timestamp = binary.BigEndian.Uint64(data[1:9])
+	m.Body = data[9:]
+	return m
 }
 
 //NewMessage -
@@ -72,9 +99,7 @@ func HandleMessage(msg Message, con *Connection) {
 		handleHandshake(hs, con)
 		break
 	case commands.CmdHandshakeResp:
-		fmt.Println("body:", body)
 		hsr, err := commands.DeserializeHandshakeResponse(body)
-		fmt.Println("hsr:", hsr)
 		if err != nil {
 			fmt.Println(err)
 			//respond with error message
@@ -92,6 +117,9 @@ func HandleMessage(msg Message, con *Connection) {
 		break
 	case commands.CmdGetRoutingResp:
 		handleGetRoutingResp(body[2:], con)
+		break
+	case commands.CmdPeerConnected:
+		handlePeerConnected(msg)
 		break
 	default:
 		fmt.Println("Junk message")
@@ -113,11 +141,10 @@ func handleHandshake(hs commands.Handshake, con *Connection) {
 		isConnection = false
 	} else {
 		con.isPeer = true
+		con.id = hs.ID
+
 	}
 	pubKey := encryption.Key{Public: _me.Key.Public}
-	s, _ := pubKey.Serialize()
-	fmt.Println("serialized key", s)
-	fmt.Println("id", _me.ID())
 	hsr := commands.NewHandshakeResponse(_me.ID(), pubKey, address)
 
 	msg := NewMessage(hsr.Serialize(), false)
@@ -131,6 +158,7 @@ func handleHandshake(hs commands.Handshake, con *Connection) {
 	if isConnection {
 		n := routing.NewNode(hs.PubKey, hs.Address, nil)
 		routing.Table.AddNode(&n)
+		go sendConnectionMessage(&n)
 	}
 }
 
@@ -142,6 +170,17 @@ func handleHandshakeResp(hsr commands.HandshakeResponse, con *Connection) {
 		con.isPeer = true
 	}
 	//do routing check
+	mutex.Lock()
+	if _initialRouting {
+		mutex.Unlock()
+		if !con.isPeer {
+			fmt.Println("messages.go 151")
+			con.close()
+		}
+		go findPeers()
+		return
+	}
+	mutex.Unlock()
 	routingCheck := []byte{commands.Version, commands.CmdCheckRouting}
 	msg := NewMessage(routingCheck, false)
 	err := con.sendMessage(msg)
@@ -169,8 +208,10 @@ func handleRoutingCheckResp(data []byte, con *Connection) {
 	//compare with own routing
 	if routing.Table.Compare(data) {
 		if !con.isPeer {
+			fmt.Println("messages.go 185")
 			con.close()
 		}
+		go findPeers()
 		return
 	}
 	cmd := []byte{commands.Version, commands.CmdGetRouting}
@@ -200,20 +241,73 @@ func handleGetRouting(con *Connection) {
 
 func handleGetRoutingResp(data []byte, con *Connection) {
 	if !con.sentGetRouting {
+		fmt.Println("messages.go 281")
 		con.close()
+		go findPeers()
 		return
 	}
+	fmt.Println("***************************")
+	fmt.Println(data)
+	fmt.Println("***************************")
 	route, err := routing.DeserializeRouting(data)
 	if err != nil {
 		fmt.Println(err)
 	}
-	for _, n := range route.Nodes {
-		routing.Table.AddNode(n)
+	for key := range route.Nodes {
+		routing.Table.AddNode(route.Nodes[key])
+	}
+
+	if !con.isPeer {
+		fmt.Println("messages.go 235")
+		con.close()
 	}
 
 	go findPeers()
+}
 
-	if !con.isPeer {
-		con.close()
+func sendConnectionMessage(node *routing.Node) {
+	var buff bytes.Buffer
+	buff.Write([]byte{commands.Version, commands.CmdPeerConnected})
+	buff.Write(_me.ID())
+	buff.Write(node.Serialize()) //len 144
+	sig, err := encryption.Sign(_me.Key, buff.Bytes())
+
+	if err != nil {
+		fmt.Println(err)
+		return
 	}
+	buff.Write(sig)
+	msg := NewMessage(buff.Bytes(), false)
+	_connections.SendMessage(msg)
+}
+
+func handlePeerConnected(msg Message) {
+	data := msg.Body[2:]
+	dst := make([]byte, hex.EncodedLen(32))
+	hex.Encode(dst, data[0:32])
+	id := string(dst)
+	mutex.Lock()
+	node, exists := routing.Table.Nodes[id]
+	mutex.Unlock()
+	if !exists {
+		fmt.Println("Node does not exist")
+		//TODO: ask for routing from a peer..
+		return
+	}
+	n, err := routing.DeserializeNode(data[32:176])
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	sig := data[176:]
+
+	if !encryption.ValidateSig(node.PubKey, sig, msg.Body[0:178]) {
+		fmt.Println("Invalid sig for peer connection")
+		return
+	}
+	go _connections.SendMessage(msg)
+
+	routing.Table.AddNode(&n)
+	node.AddConnection(&n)
+
 }

@@ -11,9 +11,10 @@ import (
 
 //Node -
 type Node struct {
-	PubKey      encryption.Key
-	Address     commands.Address
-	Connections map[string]*Node
+	PubKey        encryption.Key
+	Address       commands.Address
+	Connections   map[string]*Node
+	RequestedPeer bool //attempted to connect as peer
 }
 
 //ID -
@@ -26,7 +27,7 @@ func (node *Node) ID() []byte {
 
 //IsServer - shows whether this noe can accept connections
 func (node *Node) IsServer() bool {
-	return node.Address.IP == "0.0.0.0"
+	return node.Address.IP != "0.0.0.0"
 }
 
 //Serialize -
@@ -38,13 +39,19 @@ func (node *Node) Serialize() []byte {
 	buff.Write(node.Address.Serialize()) //len 12
 
 	return buff.Bytes()
-	//total len 32 + 12
+
 }
 
 //AddConnection -
 func (node *Node) AddConnection(n *Node) {
 	mutex.Lock()
-	node.Connections[n.IDString()] = n
+	if node.Connections == nil {
+		node.Connections = make(map[string]*Node)
+	}
+	_, exists := node.Connections[n.IDString()]
+	if !exists {
+		node.Connections[n.IDString()] = n
+	}
 	mutex.Unlock()
 }
 

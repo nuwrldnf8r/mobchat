@@ -6,6 +6,7 @@ import (
 	"mobchat/config"
 	"mobchat/encryption"
 	"mobchat/node/commands"
+	"mobchat/node/routing"
 )
 
 //Me -
@@ -15,9 +16,12 @@ type Me struct {
 	Address      commands.Address
 }
 
-var _connections Connections
-var _initialized bool = false
-var _me Me
+var (
+	_connections    Connections
+	_initialized    bool = false
+	_me             Me
+	_initialRouting = false
+)
 
 //Initialize - initializes node
 func Initialize() error {
@@ -33,7 +37,8 @@ func Initialize() error {
 		Key:     key,
 		Address: commands.NewAddress(config.Attr("address"), config.Attr("port")),
 	}
-
+	node := routing.NewNode(encryption.Key{Public: _me.Key.Public}, _me.Address, nil)
+	routing.Table.AddNode(&node)
 	return nil
 }
 
