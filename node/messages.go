@@ -14,11 +14,50 @@ import (
 	"time"
 )
 
+const messageIDsMax = 320000
+
+var _messageIDs []byte
+var _messageHandlers []MessageHandler
+
+//MessageHandler -
+type MessageHandler interface {
+	Handle(msg Message)
+}
+
 //Message -
 type Message struct {
 	Body      []byte
 	Timestamp uint64
 	Encrypted bool
+}
+
+//AddMessageHandler -
+func AddMessageHandler(handler MessageHandler) {
+	if _messageHandlers == nil {
+		_messageHandlers = make([]MessageHandler, 0)
+	}
+	_messageHandlers = append(_messageHandlers, handler)
+}
+
+func messageExists(id []byte) bool {
+	mutex.Lock()
+	if _messageIDs == nil {
+		_messageIDs = make([]byte, 0)
+		_messageIDs = append(_messageIDs, id...)
+		mutex.Unlock()
+		return false
+	}
+	exists := bytes.Contains(_messageIDs, id)
+	if exists {
+		mutex.Unlock()
+		return true
+	}
+	_messageIDs = append(_messageIDs, id...)
+	if len(_messageIDs) > messageIDsMax {
+		_messageIDs = _messageIDs[32:]
+	}
+	mutex.Unlock()
+	return false
 }
 
 //Serialize -
@@ -73,10 +112,15 @@ func (m *Message) ID() []byte {
 
 //HandleMessage -
 func HandleMessage(msg Message, con *Connection) {
+	//if con.messageIds
+	if messageExists(msg.ID()) {
+		return
+	}
 	err := con.addMessageID(msg.ID())
 	if err != nil {
 		return
 	}
+	fmt.Println("Handling Msg ID", util.ToHexString(msg.ID()))
 	//for now we ignore version
 	var body []byte
 	if msg.Encrypted {
@@ -170,13 +214,13 @@ func handleHandshakeResp(hsr commands.HandshakeResponse, con *Connection) {
 		n := routing.NewNode(hsr.PubKey, hsr.Address, nil)
 		routing.Table.AddNode(&n)
 		con.isPeer = true
+		con.id = n.ID()
 	}
 	//do routing check
 	mutex.Lock()
 	if _initialRouting {
 		mutex.Unlock()
 		if !con.isPeer {
-			fmt.Println("messages.go 151")
 			con.close()
 		}
 		go findPeers()
@@ -210,7 +254,6 @@ func handleRoutingCheckResp(data []byte, con *Connection) {
 	//compare with own routing
 	if routing.Table.Compare(data) {
 		if !con.isPeer {
-			fmt.Println("messages.go 185")
 			con.close()
 		}
 		go findPeers()
@@ -243,14 +286,11 @@ func handleGetRouting(con *Connection) {
 
 func handleGetRoutingResp(data []byte, con *Connection) {
 	if !con.sentGetRouting {
-		fmt.Println("messages.go 281")
 		con.close()
 		go findPeers()
 		return
 	}
-	fmt.Println("***************************")
-	fmt.Println(data)
-	fmt.Println("***************************")
+
 	route, err := routing.DeserializeRouting(data)
 	if err != nil {
 		fmt.Println(err)
@@ -260,7 +300,6 @@ func handleGetRoutingResp(data []byte, con *Connection) {
 	}
 
 	if !con.isPeer {
-		fmt.Println("messages.go 235")
 		con.close()
 	}
 
@@ -326,6 +365,7 @@ func handlePeerDisconnected(msg Message) {
 	id2 := util.ToHexString(data[32:64])
 	mutex.Lock()
 	node2, exists := routing.Table.Nodes[id2]
+	fmt.Println("removing node", id2)
 	mutex.Unlock()
 	if !exists {
 		fmt.Println("Node2 does not exist")

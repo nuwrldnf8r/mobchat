@@ -131,7 +131,6 @@ func (cons *Connections) Add(con *Connection) {
 func (cons *Connections) Remove(con Connection) {
 	mutex.Lock()
 	delete(_connections._lst, con.addr.String())
-	fmt.Println("removed", con.addr.String())
 	mutex.Unlock()
 }
 

@@ -41,10 +41,4 @@ const (
 
 	//CmdGeneric - is a generic message
 	CmdGeneric = 0x12
-
-	//CmdRequestPeerConn - requests a peer connection - if affirmative - returns IP, else returns 0x00
-	CmdRequestPeerConn = 0x13
-
-	//CmdRequestPeerConnResp -
-	CmdRequestPeerConnResp = 0x14
 )

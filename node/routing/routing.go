@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/binary"
-	"fmt"
 	"mobchat/node/commands"
 	"sort"
 	"strings"
@@ -30,6 +29,7 @@ func newRouting() Routing {
 
 //AddNode -
 func (routing *Routing) AddNode(node *Node) {
+
 	mutex.Lock()
 	_, exists := routing.Nodes[node.IDString()]
 	if !exists {
@@ -125,7 +125,6 @@ func (routing *Routing) FindRoute(ID []byte) []Node {
 func DeserializeRouting(data []byte) (Routing, error) {
 	//get the routing length (number of nodes)
 	routingLen := binary.BigEndian.Uint32(data[0:4])
-	fmt.Println("routingLen", routingLen)
 	arNodes := make([]Node, routingLen)
 	for i := range arNodes {
 		idx := 4 + i*144
@@ -146,9 +145,7 @@ func DeserializeRouting(data []byte) (Routing, error) {
 		idx++
 		for i < ln {
 			nodeIdx := binary.BigEndian.Uint32(data[idx : idx+4])
-			fmt.Println("nodeIdx", nodeIdx)
 			n := arNodes[nodeIdx]
-			fmt.Println("cnt", cnt)
 			arNodes[cnt].AddConnection(&n)
 			idx += 4
 			i++
