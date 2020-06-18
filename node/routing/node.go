@@ -51,6 +51,7 @@ func (node *Node) AddConnection(n *Node) {
 	_, exists := node.Connections[n.IDString()]
 	if !exists {
 		node.Connections[n.IDString()] = n
+		n.Connections[node.IDString()] = node
 	}
 	mutex.Unlock()
 }
@@ -59,6 +60,7 @@ func (node *Node) AddConnection(n *Node) {
 func (node *Node) RemoveConnection(n *Node) {
 	mutex.Lock()
 	delete(node.Connections, n.IDString())
+	delete(n.Connections, node.IDString())
 	mutex.Unlock()
 }
 
@@ -88,7 +90,7 @@ func (node *Node) IDString() string {
 func DeserializeNode(data []byte) (Node, error) {
 	//132
 	if len(data) != 144 {
-		return Node{}, errors.New("Invalid data - length needs to be 176 bytes")
+		return Node{}, errors.New("Invalid data - length needs to be 144 bytes")
 	}
 	pubKey, err := encryption.Deserialize(data[0:132])
 	if err != nil {

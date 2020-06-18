@@ -5,23 +5,38 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
+	"math/rand"
 	"mobchat/config"
 	"mobchat/encryption"
 	"mobchat/node/commands"
 	"mobchat/node/routing"
 	"mobchat/util"
 	"strconv"
+	"sync"
 	"time"
 )
 
-const messageIDsMax = 320000
+const (
+	messageIDsMax   = 320000
+	callbackTimeout = "30s"
+)
 
-var _messageIDs []byte
-var _messageHandlers []MessageHandler
+var (
+	_messageIDs       []byte
+	_messageHandlers  []MessageHandler
+	_messageCallbacks MessageCallbacks
+	cbmutex           = sync.RWMutex{}
+)
 
-//MessageHandler -
+//MessageHandler - for handling generic and relay messages from another package
 type MessageHandler interface {
 	Handle(msg Message)
+}
+
+//MessageCallbacks - used to wait for returning messages
+type MessageCallbacks struct {
+	callbacks   map[string]func(Message)
+	initialized bool
 }
 
 //Message -
@@ -29,6 +44,35 @@ type Message struct {
 	Body      []byte
 	Timestamp uint64
 	Encrypted bool
+}
+
+//Add - adds a callback
+func (msgCBs *MessageCallbacks) Add(ID []byte, callback func(Message)) {
+	idStr := util.ToHexString(ID)
+	cbmutex.Lock()
+	if !msgCBs.initialized {
+		msgCBs.callbacks = make(map[string]func(Message))
+		msgCBs.initialized = true
+	}
+	msgCBs.callbacks[idStr] = callback
+	dur, _ := time.ParseDuration(callbackTimeout)
+	cbmutex.Unlock()
+	t := time.NewTimer(dur)
+	<-t.C
+	cbmutex.Lock()
+	delete(msgCBs.callbacks, idStr)
+	cbmutex.Unlock()
+}
+
+//Call -
+func (msgCBs *MessageCallbacks) Call(ID []byte, msg Message) {
+	cbmutex.Lock()
+	defer cbmutex.Unlock()
+	callback, exists := msgCBs.callbacks[util.ToHexString(ID)]
+	if !exists {
+		return
+	}
+	go callback(msg)
 }
 
 //AddMessageHandler -
@@ -96,14 +140,14 @@ func NewMessage(body []byte, encrypted bool) Message {
 }
 
 //ID -
-func (m *Message) ID() []byte {
-	if m.Timestamp == 0 {
-		m.Timestamp = uint64(time.Now().UnixNano())
+func (msg *Message) ID() []byte {
+	if msg.Timestamp == 0 {
+		msg.Timestamp = uint64(time.Now().UnixNano())
 	}
 	var buff bytes.Buffer
-	buff.Write(m.Body)
+	buff.Write(msg.Body)
 	timestamp := make([]byte, 8)
-	binary.BigEndian.PutUint64(timestamp, m.Timestamp)
+	binary.BigEndian.PutUint64(timestamp, msg.Timestamp)
 	buff.Write(timestamp)
 	h := sha256.New()
 	h.Write(buff.Bytes())
@@ -124,7 +168,7 @@ func HandleMessage(msg Message, con *Connection) {
 	//for now we ignore version
 	var body []byte
 	if msg.Encrypted {
-		body, err = encryption.ValidateSigAndDecrypt(con.pubKey, _me.Key, msg.Body)
+		body, err = encryption.Decrypt(_me.Key, msg.Body)
 		if err != nil {
 			fmt.Println(err)
 			return
@@ -391,4 +435,32 @@ func sendPeerDisconnected(id []byte) {
 	body = append(body, sig...)
 	msg := NewMessage(body, false)
 	_connections.SendMessage(msg)
+}
+
+func getRoutes(ID []byte, getRoutesReply func(msg Message)) {
+	body := []byte{commands.Version, commands.CmdGetRouting}
+	body = append(body, ID...)
+	msg := NewMessage(body, false)
+	_messageCallbacks.Add(msg.ID(), getRoutesReply)
+	//get random connection
+	idx := int(rand.Uint32()) % len(_connections._lst)
+	cnt := 0
+	mutex.Lock()
+	for _, con := range _connections._lst {
+		if cnt == idx {
+			go con.sendMessage(msg)
+			break
+		}
+		cnt++
+	}
+	mutex.Unlock()
+
+}
+
+func handleGetRoutes(msg Message) {
+
+}
+
+func handleGetRoutesReply(msg Message) {
+
 }

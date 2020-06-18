@@ -116,11 +116,6 @@ func (routing *Routing) Serialize() []byte {
 	return buff.Bytes()
 }
 
-//FindRoute -
-func (routing *Routing) FindRoute(ID []byte) []Node {
-	return nil
-}
-
 //DeserializeRouting -
 func DeserializeRouting(data []byte) (Routing, error) {
 	//get the routing length (number of nodes)
