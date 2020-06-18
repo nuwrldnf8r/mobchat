@@ -211,6 +211,10 @@ func HandleMessage(msg Message, con *Connection) {
 		break
 	case commands.CmdPeerDisconnected:
 		handlePeerDisconnected(msg)
+		break
+	case commands.CmdGetRoute:
+		handleGetRoute(msg, con)
+		break
 	default:
 		fmt.Println("Junk message")
 		//is junk message - need to decide how to respond
@@ -438,7 +442,7 @@ func sendPeerDisconnected(id []byte) {
 }
 
 func getRoutes(ID []byte, getRoutesReply func(msg Message)) {
-	body := []byte{commands.Version, commands.CmdGetRouting}
+	body := []byte{commands.Version, commands.CmdGetRoute}
 	body = append(body, ID...)
 	msg := NewMessage(body, false)
 	_messageCallbacks.Add(msg.ID(), getRoutesReply)
@@ -457,10 +461,26 @@ func getRoutes(ID []byte, getRoutesReply func(msg Message)) {
 
 }
 
-func handleGetRoutes(msg Message) {
-
+func handleGetRoute(msg Message, con *Connection) {
+	id := msg.Body[2:]
+	startIDs := make([][]byte, 0)
+	mutex.Lock()
+	for _, node := range _connections._lst {
+		if node.server {
+			startIDs = append(startIDs, node.id)
+		}
+	}
+	mutex.Unlock()
+	routes := routing.Table.FindRoute(id, startIDs)
+	serialized := routing.SerializeRoutes(routes)
+	var buff bytes.Buffer
+	buff.Write([]byte{commands.Version, commands.CmdGetRouteResp})
+	buff.Write(msg.ID())
+	buff.Write(serialized)
+	m := NewMessage(buff.Bytes(), false)
+	con.sendMessage(m)
 }
 
-func handleGetRoutesReply(msg Message) {
+func handleGetRouteReply(msg Message) {
 
 }
